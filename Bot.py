@@ -1,3 +1,4 @@
+
 import os
 import sqlite3
 import asyncio
@@ -75,7 +76,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(stock)
 
     elif text == '📋 𝐓𝐞𝐫𝐦𝐬 & 𝐏𝐨𝐥𝐢𝐜𝐢𝐞𝐬':
-        await update.message.reply_text("📋 𝐓𝐞𝐫𝐦𝐬 & 𝐂𝐨𝐧𝐝𝐢𝐭𝐢𝐨𝐧𝐬\n\n✅ ᴜsᴇ ǫᴜɪᴄᴋʟʏ\n✅ sᴀᴍᴇ ᴅᴀʏ ʀᴇᴘʟᴀᴄᴇᴍᴇɴᴛ\n✅ ʀᴇᴄᴏʀᴅ sᴄʀᴇᴇɴ ᴡʜɪʟᴇ ᴜsɪɴɢ")
+        terms = (
+            "📋 𝐓𝐞𝐫𝐦𝐬 & 𝐏𝐨𝐥𝐢𝐜𝐢𝐞𝐬\n"
+            "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+            "✅ Codes work after 15 minutes of delivery\n"
+            "✅ Replacement possible but need video of buying to apply\n"
+            "✅ Under 1 hour replacement only\n"
+            "❌ No replacement for SHEIN 500 pack\n"
+            "✅ Contact admin for any issues"
+        )
+        await update.message.reply_text(terms)
 
     elif text == '📞 𝐒𝐮𝐩𝐩𝐨𝐫𝐭':
         await update.message.reply_text(f"📞 𝐂𝐨𝐧𝐭𝐚𝐜𝐭 𝐀𝐝𝐦𝐢𝐧: {SUPPORT_ID}")
@@ -84,6 +94,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif context.user_data.get('awaiting_qty') and text and text.isdigit():
         qty = int(text)
         ctype = context.user_data['selected_type']
+        
+        # MINIMUM 5 CHECK
+        if ctype == "500" and qty < 5:
+            await update.message.reply_text("❌ Minimum 5 quantity required for SHEIN 500.")
+            return
+            
         amt = PRICES[ctype] * qty
         oid = "SHN-" + ''.join(random.choices(string.digits, k=6))
         
@@ -149,4 +165,4 @@ def main():
     app.run_polling()
 
 if __name__ == '__main__': main()
-        
+    

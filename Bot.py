@@ -1,4 +1,3 @@
-
 import os
 import sqlite3
 import asyncio
@@ -18,10 +17,10 @@ def run(): app_flask.run(host='0.0.0.0', port=8080)
 def keep_alive(): Thread(target=run).start()
 
 # --- CONFIGURATION ---
-TOKEN = '8414508718:AAGCmAbABf8Cuo-jXyEOH_4DNLM1xpsbg14'
+TOKEN = '8414508718:AAGCmAbABf8Cuo-jXyENLM1xpsbg14'
 ADMIN_IDS = [7400310608, 7387728324]
 UPI_ID = "sakildhawa1@fam"
-SUPPORT_ID = "@xyxnSupportbot"
+SUPPORT_ID = "@XYNX_ORL"
 
 # Database Setup
 conn = sqlite3.connect('shop.db', check_same_thread=False)
@@ -30,7 +29,7 @@ cursor.execute('CREATE TABLE IF NOT EXISTS inventory (id INTEGER PRIMARY KEY, ty
 cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)')
 conn.commit()
 
-PRICES = {"500": 8, "1000": 80, "2000": 145, "4000": 300}
+PRICES = {"500": 6, "1000": 60, "2000": 120, "4000": 190}
 
 # --- START MENU ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -61,6 +60,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.commit()
             await update.message.reply_text(f"✅ Added {len(codes)} codes to {ctype}.")
         except: await update.message.reply_text("Format: /add 500\ncode1")
+        return
+
+    # ADMIN: BROADCAST (/bc)
+    if user_id in ADMIN_IDS and text and text.startswith('/bc'):
+        msg = text[3:].strip()
+        if not msg:
+            await update.message.reply_text("Format: /bc Message")
+            return
+        cursor.execute("SELECT user_id FROM users")
+        users = cursor.fetchall()
+        count = 0
+        for u in users:
+            try:
+                await context.bot.send_message(chat_id=u[0], text=f"🔔 𝐀𝐍𝐍𝐎𝐔𝐍𝐂𝐄𝐌𝐄𝐍𝐓\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n{msg}")
+                count += 1
+            except: pass
+        await update.message.reply_text(f"✅ Broadcast sent to {count} users.")
         return
 
     # USER MENU
@@ -95,7 +111,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         qty = int(text)
         ctype = context.user_data['selected_type']
         
-        # MINIMUM 5 CHECK
+        cursor.execute("SELECT COUNT(*) FROM inventory WHERE type=?", (ctype,))
+        available = cursor.fetchone()[0]
+        
+        if qty > available:
+            await update.message.reply_text(f"❌ Sirf {available} quantity available hai.")
+            return
+
         if ctype == "500" and qty < 5:
             await update.message.reply_text("❌ Minimum 5 quantity required for SHEIN 500.")
             return
@@ -136,10 +158,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     d = query.data.split('_')
+    
     if d[0] == 'buy':
-        context.user_data['selected_type'] = d[1]
+        ctype = d[1]
+        cursor.execute("SELECT COUNT(*) FROM inventory WHERE type=?", (ctype,))
+        available = cursor.fetchone()[0]
+        
+        if available == 0:
+            await query.answer("❌ Out of Stock! Abhi is pack ke codes nahi hain.", show_alert=True)
+            return
+            
+        context.user_data['selected_type'] = ctype
         context.user_data['awaiting_qty'] = True
-        await query.message.reply_text(f"🔢 𝐄𝐧𝐭𝐞𝐫 𝐐𝐮𝐚𝐧𝐭𝐢𝐭𝐲 ғᴏʀ sʜᴇɪɴ {d[1]}:")
+        await query.message.reply_text(f"🔢 𝐄𝐧𝐭𝐞𝐫 𝐐𝐮𝐚𝐧𝐭𝐢𝐭𝐲 (Available: {available}):")
+    
     elif d[0] == 'apv':
         ctype, qty, uid = d[1], int(d[2]), int(d[3])
         cursor.execute("SELECT id, code FROM inventory WHERE type=? LIMIT ?", (ctype, qty))
@@ -151,9 +183,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.commit()
             await query.edit_message_caption("✅ 𝐀𝐩𝐩𝐫𝐨𝐯𝐞𝐝 & 𝐃𝐞𝐥𝐢𝐯𝐞𝐫𝐞𝐝!")
         else: await query.answer("❌ Out of Stock!", show_alert=True)
+    
     elif d[0] == 'rej':
         await context.bot.send_message(int(d[1]), "❌ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐑𝐞𝐣𝐞𝐜𝐭𝐞𝐝!")
         await query.edit_message_caption("❌ 𝐎𝐫𝐝𝐞𝐫 𝐑𝐞𝐣𝐞𝐜𝐭𝐞𝐝.")
+    
     await query.answer()
 
 def main():
@@ -165,4 +199,3 @@ def main():
     app.run_polling()
 
 if __name__ == '__main__': main()
-    

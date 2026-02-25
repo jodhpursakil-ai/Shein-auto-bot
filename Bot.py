@@ -17,10 +17,10 @@ def run(): app_flask.run(host='0.0.0.0', port=8080)
 def keep_alive(): Thread(target=run).start()
 
 # --- CONFIGURATION ---
-TOKEN = '8414508718:AAGCmAbABf8Cuo-jXyENLM1xpsbg14'
+TOKEN = '8414508718:AAGCmAbABf8Cuo-jXyEOH_4DNLM1xpsbg14'
 ADMIN_IDS = [7400310608, 7387728324]
 UPI_ID = "sakildhawa1@fam"
-SUPPORT_ID = "@XYNX_ORL"
+SUPPORT_ID = "@xyxnSupportbot"
 
 # Database Setup
 conn = sqlite3.connect('shop.db', check_same_thread=False)
@@ -29,7 +29,7 @@ cursor.execute('CREATE TABLE IF NOT EXISTS inventory (id INTEGER PRIMARY KEY, ty
 cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)')
 conn.commit()
 
-PRICES = {"500": 6, "1000": 60, "2000": 120, "4000": 190}
+PRICES = {"500": 8, "1000": 75, "2000": 160, "4000": 300}
 
 # --- START MENU ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -1,20 +1,32 @@
+import os
 import sqlite3
 import asyncio
 import random
 import string
-import requests
-import os
-from flask import Flask, request
+from flask import Flask
 from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
+# --- FLASK SERVER FOR RENDER ---
+app_flask = Flask('')
+
+@app_flask.route('/')
+def home():
+    return "Bot is Running!"
+
+def run():
+    app_flask.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
 # --- CONFIGURATION ---
 TOKEN = '8414508718:AAGCmAbABf8Cuo-jXyEOH_4DNLM1xpsbg14'
 ADMIN_IDS = [7400310608, 7387728324]
-PAY0_API_KEY = "277779abe3cbe0ca5dc04065b36e19e8"
-SUPPORT_ID = "@XYNX_ORL"
-WELCOME_PIC = "https://i.ibb.co/Lz0x9nZ/shein-banner.jpg"
+UPI_ID = "sakildhawa1@fam"
+SUPPORT_ID = "@XynxSupportbot"
 
 # Database Setup
 conn = sqlite3.connect('shop.db', check_same_thread=False)
@@ -25,64 +37,40 @@ cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)')
 cursor.execute('CREATE TABLE IF NOT EXISTS banned_users (user_id INTEGER PRIMARY KEY)')
 conn.commit()
 
-PRICES = {"500": 6, "1000": 60, "2000": 120, "4000": 190}
+PRICES = {"500": 7, "1000": 70, "2000": 140, "4000": 300}
 
-# --- WEBHOOK SERVER (FOR AUTO DELIVERY) ---
-flask_app = Flask(__name__)
+def generate_order_id():
+    return "SHN-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
-@flask_app.route('/webhook', methods=['POST'])
-def webhook():
-    data = request.json
-    if data and data.get('status') in ['COMPLETED', 'SUCCESS', 'success']:
-        try:
-            # extra_info format: UID|TYPE|QTY|OID
-            extra = data.get('extra_info').split('|')
-            uid, ctype, qty, oid = int(extra[0]), extra[1], int(extra[2]), extra[3]
-            amount = data.get('amount')
-            
-            db = sqlite3.connect('shop.db')
-            cur = db.cursor()
-            cur.execute("SELECT id, code FROM inventory WHERE type=? LIMIT ?", (ctype, qty))
-            rows = cur.fetchall()
-            
-            if len(rows) >= qty:
-                codes_text = "\n".join([f"💎 `{r[1]}`" for r in rows])
-                # Deliver to User
-                requests.get(f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={uid}&text=✅ **ᴏʀᴅᴇʀ ᴅᴇʟɪᴠᴇʀᴇᴅ**\n🆔 ɪᴅ: `{oid}`\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n🎁 ʏᴏᴜʀ ᴄᴏᴅᴇs:\n{codes_text}\n(ᴛᴀᴘ ᴛᴏ ᴄᴏᴘʏ)&parse_mode=Markdown")
-                
-                # Notify Admin
-                admin_report = f"💰 **Auto Sale!**\nID: `{oid}`\nPack: {ctype}\nQty: {qty}\nAmount: ₹{amount}\nCodes Sent Successfully!"
-                for admin in ADMIN_IDS:
-                    requests.get(f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={admin}&text={admin_report}&parse_mode=Markdown")
-                
-                # Update DB
-                cur.execute("INSERT INTO sales_history (amount, date) VALUES (?, datetime('now'))", (int(amount),))
-                cur.executemany("DELETE FROM inventory WHERE id=?", [(r[0],) for r in rows])
-                db.commit()
-            db.close()
-        except Exception as e: print(f"Webhook Error: {e}")
-    return "OK", 200
-
-# --- BOT FUNCTIONS ---
 async def is_banned(user_id):
     cursor.execute("SELECT 1 FROM banned_users WHERE user_id = ?", (user_id,))
     return cursor.fetchone() is not None
 
+# --- START MENU ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if await is_banned(user_id): return
+    if await is_banned(user_id):
+        await update.message.reply_text("❌ You are permanently banned.")
+        return
+
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
+
     kbd = [['🛒 Buy Vouchers', '📊 Stock Check'], ['📋 Terms & Policies', '📞 Support']]
     markup = ReplyKeyboardMarkup(kbd, resize_keyboard=True)
-    await update.message.reply_photo(photo=WELCOME_PIC, caption="✨ ʟᴜxᴜʀʏ sʜᴇɪɴ sᴛᴏʀᴇ ✨\nWelcome! Select an option below:", reply_markup=markup)
+    
+    welcome_text = "✨ ʟᴜxᴜʀʏ sʜᴇɪɴ sᴛᴏʀᴇ ✨\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\nWelcome! Select an option below:"
+    await update.message.reply_text(welcome_text, reply_markup=markup)
 
+# --- MESSAGE HANDLER ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
+    username = f"@{update.effective_user.username}" if update.effective_user.username else update.effective_user.first_name
+
     if await is_banned(user_id): return
 
-    # --- ADMINS ---
+    # --- ADMIN COMMANDS ---
     if user_id in ADMIN_IDS and text:
         if text.startswith('/add'):
             try:
@@ -94,72 +82,102 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"✅ Added {len(codes)} codes to {ctype}.")
             except: await update.message.reply_text("Format: /add 500\ncode1")
             return
+
         elif text.startswith('/bc'):
             msg = text.split(None, 1)[1] if len(text.split()) > 1 else None
+            if not msg:
+                await update.message.reply_text("❌ Usage: /bc message")
+                return
             cursor.execute("SELECT user_id FROM users")
-            users = cursor.fetchall()
-            for u in users:
-                try: await context.bot.send_message(u[0], f"📢 **LOOT ALERT**\n\n{msg}", parse_mode='Markdown')
-                except: pass
-            return
-        elif text == '/sales':
-            cursor.execute("SELECT SUM(amount), COUNT(*) FROM sales_history")
-            res = cursor.fetchone()
-            await update.message.reply_text(f"📈 ꜱᴀʟᴇꜱ ʀᴇᴘᴏʀᴛ\n💰 Total: ₹{res[0] or 0}\n📦 Orders: {res[1] or 0}")
+            for u in cursor.fetchall():
+                try:
+                    await context.bot.send_message(chat_id=u[0], text=f"📢 **LOOT ALERT**\n\n{msg}", parse_mode='Markdown')
+                except: continue
+            await update.message.reply_text("✅ Broadcast Sent")
             return
 
-    # --- USERS ---
-    if text == '📊 Stock Check':
-        stock_text = "📊 ʟɪᴠᴇ sᴛᴏᴄᴋ sᴛᴀᴛᴜs\n"
-        for k in PRICES.keys():
-            cursor.execute("SELECT COUNT(*) FROM inventory WHERE type=?", (k,))
-            stock_text += f"• SHEIN {k}: {cursor.fetchone()[0]}\n"
-        await update.message.reply_text(stock_text)
+    # --- USER MENU ---
+    if text == '📋 Terms & Policies':
+        await update.message.reply_text("📋 Terms & Conditions\n\n✅ USE QUICKLY\n✅ RECORD SCREEN FOR REPLACEMENT\n✅ SAME DAY REPLACEMENT ONLY")
 
     elif text == '🛒 Buy Vouchers':
         keyboard = [[InlineKeyboardButton(f"🎫 SHEIN {k} ➜ ₹{v}", callback_data=f'buy_{k}')] for k, v in PRICES.items()]
-        await update.message.reply_text("💎 ꜱᴇʟᴇᴄᴛ ʏᴏᴜʀ ᴘᴀᴄᴋᴀɢᴇ:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.message.reply_text("💎 Select Package:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    elif context.user_data.get('awaiting_qty') and text.isdigit():
-        qty, ctype = int(text), context.user_data['selected_type']
-        total = PRICES[ctype] * qty
-        oid = "SHN-" + "".join(random.choices(string.digits, k=6))
+    elif text == '📊 Stock Check':
+        stock_text = "📊 Live Stock Status\n"
+        for k in PRICES.keys():
+            cursor.execute("SELECT COUNT(*) FROM inventory WHERE type=?", (k,))
+            count = cursor.fetchone()[0]
+            stock_text += f"{'✅' if count > 0 else '❌'} SHEIN {k}: {count}\n"
+        await update.message.reply_text(stock_text)
+
+    elif text == '📞 Support':
+        await update.message.reply_text(f"📞 Contact Admin: {SUPPORT_ID}")
+
+    # --- QTY HANDLING ---
+    elif context.user_data.get('awaiting_qty') and text and text.isdigit():
+        qty = int(text)
+        ctype = context.user_data['selected_type']
+        if ctype == "500" and qty < 5:
+            await update.message.reply_text("❌ Minimum 5 required.")
+            return
         
-        # Pay0 API Call
-        try:
-            api_url = "https://api.pay0.world/v1/payment/create"
-            payload = {
-                "api_key": PAY0_API_KEY,
-                "amount": total,
-                "order_id": oid,
-                "extra_info": f"{user_id}|{ctype}|{qty}|{oid}",
-                "redirect_url": f"https://t.me/{(await context.bot.get_me()).username}"
-            }
-            res = requests.post(api_url, json=payload, timeout=20).json()
-            pay_link = res.get('url') or res.get('payment_url')
-            
-            if pay_link:
-                kb = InlineKeyboardMarkup([[InlineKeyboardButton("💳 PAY NOW", url=pay_link)]])
-                await update.message.reply_text(f"📝 **ɪɴᴠᴏɪᴄᴇ:** `{oid}`\n💰 **ᴛᴏᴛᴀʟ:** ₹{total}\n\nClick below to pay:", reply_markup=kb, parse_mode='Markdown')
-            else:
-                await update.message.reply_text("❌ Gateway Error. Try again.")
-        except: await update.message.reply_text("❌ Connection Fail.")
+        total = PRICES[ctype] * qty
+        oid = generate_order_id()
+        qr = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa={UPI_ID}%26am={total}%26cu=INR"
+        invoice = f"📝 Invoice: `{oid}`\n💰 Total: ₹{total}\n🏦 UPI: `{UPI_ID}`\n📸 Send Screenshot Now!"
+        
+        await update.message.reply_photo(photo=qr, caption=invoice, parse_mode='Markdown')
+        context.user_data['order_ready'] = {'oid': oid, 'type': ctype, 'qty': qty, 'amount': total, 'username': username}
         context.user_data['awaiting_qty'] = False
 
+    # SCREENSHOT HANDLER
+    elif update.message.photo and 'order_ready' in context.user_data:
+        order = context.user_data['order_ready']
+        admin_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Approve", callback_data=f"apv_{order['oid']}_{order['type']}_{order['qty']}_{user_id}_{order['amount']}_{username}"),
+             InlineKeyboardButton("❌ Reject", callback_data=f"rej_{order['oid']}_{user_id}")]
+        ])
+        for admin in ADMIN_IDS:
+            await context.bot.send_photo(chat_id=admin, photo=update.message.photo[-1].file_id, 
+                                       caption=f"🔔 New Order: {order['oid']}\nUser: {order['username']}\nAmount: ₹{order['amount']}", 
+                                       reply_markup=admin_kb)
+        await update.message.reply_text("🚀 Screenshot Sent! Waiting for Admin.")
+        del context.user_data['order_ready']
+
+# --- CALLBACKS ---
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if query.data.startswith('buy_'):
-        context.user_data['selected_type'] = query.data.split('_')[1]
+        ctype = query.data.split('_')[1]
+        context.user_data['selected_type'] = ctype
         context.user_data['awaiting_qty'] = True
-        await query.message.reply_text("🔢 **Enter Quantity:**")
+        await query.message.reply_text(f"🔢 Enter Quantity for SHEIN {ctype}:")
+    
+    elif query.data.startswith('apv_'):
+        _, oid, ctype, qty, uid, amt, user = query.data.split('_')
+        cursor.execute("SELECT id, code FROM inventory WHERE type=? LIMIT ?", (ctype, int(qty)))
+        rows = cursor.fetchall()
+        if len(rows) >= int(qty):
+            codes = "\n".join([f"💎 `{r[1]}`" for r in rows])
+            await context.bot.send_message(uid, f"✅ Order Delivered\nID: `{oid}`\n\n{codes}", parse_mode='Markdown')
+            cursor.executemany("DELETE FROM inventory WHERE id=?", [(r[0],) for r in rows])
+            conn.commit()
+            await query.edit_message_caption(f"✅ Approved {oid}")
+        else:
+            await query.edit_message_caption("❌ Out of Stock")
     await query.answer()
 
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    Thread(target=lambda: flask_app.run(host='0.0.0.0', port=port)).start()
+def main():
+    keep_alive() # Starts Flask Server
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, handle_message))
     app.add_handler(CallbackQueryHandler(handle_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.run_polling()
+
+if __name__ == '__main__':
+    main()
+    
   

@@ -30,7 +30,7 @@ cursor.execute('CREATE TABLE IF NOT EXISTS inventory (id INTEGER PRIMARY KEY, ty
 cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)')
 conn.commit()
 
-PRICES = {"500": 6, "1000": 60, "2000": 120, "4000": 190}
+PRICES = {"500": 8, "1000": 80, "2000": 145, "4000": 300}
 
 # --- START MENU ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
